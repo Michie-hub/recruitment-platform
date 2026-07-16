@@ -20,6 +20,9 @@ class JobPostingRepository:
     def get_by_id(self, job_id: uuid.UUID) -> JobPosting | None:
         return self._db.get(JobPosting, job_id)
 
+    def delete(self, job: JobPosting) -> None:
+        self._db.delete(job)
+
     def list_open(self, limit: int, offset: int) -> tuple[list[JobPosting], int]:
         """
         Returns (page of open postings, total count of open postings).

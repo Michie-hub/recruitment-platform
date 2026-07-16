@@ -19,6 +19,21 @@ class JobPostingCreate(BaseModel):
     salary_max: int | None = Field(default=None, ge=0)
 
 
+class JobPostingUpdate(BaseModel):
+    """
+    Payload for updating a job posting. All fields optional — PATCH semantics,
+    only the fields the client sends are changed.
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, min_length=1)
+    location: str | None = Field(default=None, min_length=1, max_length=255)
+    employment_type: EmploymentType | None = None
+    status: JobStatus | None = None
+    salary_min: int | None = Field(default=None, ge=0)
+    salary_max: int | None = Field(default=None, ge=0)
+
+
 class JobPostingRead(BaseModel):
     """Job posting as returned by the API."""
 

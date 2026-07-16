@@ -2,18 +2,32 @@
 Job posting routes.
 
 /api/v1/jobs is public for GET (candidates browse without logging in) but
-role-gated for POST (only recruiters/admins can create postings).
+role-gated for POST, and ownership-gated for PATCH/DELETE (only recruiters/
+admins can create postings; only the owning recruiter or an admin can edit
+or delete an existing one).
 """
 
-from fastapi import APIRouter, Depends, Query
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.v1.dependencies.auth import get_current_user
 from app.api.v1.dependencies.rbac import require_role
 from app.core.database import get_db
 from app.models.job_posting import JobPosting
 from app.models.user import User, UserRole
-from app.schemas.job_posting import JobPostingCreate, JobPostingRead, PaginatedJobPostings
-from app.services.job_posting_service import JobPostingService
+from app.schemas.job_posting import (
+    JobPostingCreate,
+    JobPostingRead,
+    JobPostingUpdate,
+    PaginatedJobPostings,
+)
+from app.services.job_posting_service import (
+    JobPostingNotFoundError,
+    JobPostingService,
+    PermissionDeniedError,
+)
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
@@ -40,3 +54,45 @@ def list_job_postings(
     """
     items, total = JobPostingService(db).list_open_postings(limit=limit, offset=offset)
     return PaginatedJobPostings(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/{job_id}", response_model=JobPostingRead)
+def get_job_posting(job_id: uuid.UUID, db: Session = Depends(get_db)) -> JobPosting:
+    """Get a single job posting by ID. Public, regardless of status (a known simplification —
+    a stricter version would hide draft/closed postings from non-owners)."""
+    try:
+        return JobPostingService(db).get_job_posting(job_id)
+    except JobPostingNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/{job_id}", response_model=JobPostingRead)
+def update_job_posting(
+    job_id: uuid.UUID,
+    payload: JobPostingUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> JobPosting:
+    """Update a job posting (including publishing a draft by setting status to 'open').
+    Only the owning recruiter or an admin may do this."""
+    try:
+        return JobPostingService(db).update_job_posting(job_id, payload, current_user)
+    except JobPostingNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.delete("/{job_id}", status_code=204)
+def delete_job_posting(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Delete a job posting. Only the owning recruiter or an admin may do this."""
+    try:
+        JobPostingService(db).delete_job_posting(job_id, current_user)
+    except JobPostingNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
