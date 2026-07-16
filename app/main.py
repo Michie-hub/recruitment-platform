@@ -8,6 +8,7 @@ together config, logging, and (in later milestones) routers/middleware.
 from fastapi import FastAPI
 
 from app.api.v1.routes.auth import router as auth_router
+from app.api.v1.routes.candidates import router as candidates_router
 from app.api.v1.routes.jobs import router as jobs_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(jobs_router)
+    app.include_router(candidates_router)
 
     @app.get("/health", tags=["system"])
     def health_check() -> dict[str, str]:
