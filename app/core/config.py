@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     redis_host: str
     redis_port: int = 6379
 
+    # --- S3 / MinIO ---
+    s3_endpoint_url: str
+    s3_access_key: str
+    s3_secret_key: str
+    s3_bucket_name: str
+    s3_region: str = "us-east-1"
+
     # --- JWT ---
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
