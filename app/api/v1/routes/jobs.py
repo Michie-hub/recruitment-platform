@@ -18,6 +18,7 @@ from app.core.database import get_db
 from app.models.job_posting import JobPosting
 from app.models.user import User, UserRole
 from app.schemas.job_posting import (
+    CandidateMatch,
     JobPostingCreate,
     JobPostingRead,
     JobPostingUpdate,
@@ -92,6 +93,25 @@ def delete_job_posting(
     """Delete a job posting. Only the owning recruiter or an admin may do this."""
     try:
         JobPostingService(db).delete_job_posting(job_id, current_user)
+    except JobPostingNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/{job_id}/matches", response_model=list[CandidateMatch])
+def get_job_matches(
+    job_id: uuid.UUID,
+    top_k: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[CandidateMatch]:
+    """
+    Get candidates ranked by semantic similarity to this job posting.
+    Only the owning recruiter or an admin may view matches.
+    """
+    try:
+        return JobPostingService(db).get_matching_candidates(job_id, current_user, top_k=top_k)
     except JobPostingNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionDeniedError as exc:

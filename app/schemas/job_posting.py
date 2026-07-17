@@ -52,6 +52,16 @@ class JobPostingRead(BaseModel):
     updated_at: datetime
 
 
+class CandidateMatch(BaseModel):
+    """A candidate ranked by semantic similarity to a job posting."""
+
+    candidate_user_id: uuid.UUID
+    similarity_score: float = Field(description="0-1, higher means more semantically similar")
+    headline: str | None
+    skills: str | None
+    location: str | None
+
+
 class PaginatedJobPostings(BaseModel):
     """
     Envelope for paginated list responses.
