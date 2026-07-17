@@ -29,6 +29,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # No healthcheck here (unlike db/redis/minio) — the official Chroma image
+  # doesn't ship a reliable CLI healthcheck command out of the box, so we
+  # use 'service_started' below instead of 'service_healthy'. A known
+  # simplification: on a very slow machine, the app might start slightly
+  # before Chroma is ready to accept connections on first boot.
+  chroma:
+    image: chromadb/chroma:0.5.20
+    container_name: recruitment_chroma
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
   minio:
     image: minio/minio:latest
     container_name: recruitment_minio
@@ -84,8 +98,11 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      chroma:
+        condition: service_started
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   postgres_data:
   minio_data:
+  chroma_data:

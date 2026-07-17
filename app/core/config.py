@@ -34,12 +34,19 @@ class Settings(BaseSettings):
     redis_port: int = 6379
 
     # --- S3 / MinIO ---
+    # Two endpoints because internal (container-to-container) traffic and
+    # external (browser-facing) traffic need different addresses for the
+    # same MinIO instance — 'minio' only resolves inside Docker's network.
     s3_endpoint_url: str
     s3_public_endpoint_url: str = "http://localhost:9000"
     s3_access_key: str
     s3_secret_key: str
     s3_bucket_name: str
     s3_region: str = "us-east-1"
+
+    # --- ChromaDB (vector store for semantic matching) ---
+    chroma_host: str = "chroma"
+    chroma_port: int = 8000
 
     # --- JWT ---
     jwt_secret_key: str
