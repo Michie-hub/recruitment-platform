@@ -7,6 +7,7 @@ admins can create postings; only the owning recruiter or an admin can edit
 or delete an existing one).
 """
 
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.dependencies.auth import get_current_user
 from app.api.v1.dependencies.rbac import require_role
+from app.core.cache import get_json, get_list_version, set_json
 from app.core.database import get_db
 from app.models.job_posting import JobPosting
 from app.models.user import User, UserRole
@@ -52,9 +54,24 @@ def list_job_postings(
     """
     List open job postings. Public — no authentication required, so
     candidates can browse before creating an account.
+
+    Cached (cache-aside, 60s TTL): this is the highest-traffic, read-heavy,
+    non-personalized endpoint in the platform. The cache key embeds a
+    version counter that any job create/update/delete bumps, so a write
+    instantly invalidates every previously-cached page of results.
     """
+    version = get_list_version("jobs")
+    cache_key = f"jobs:list:v{version}:limit={limit}:offset={offset}"
+
+    cached = get_json(cache_key)
+    if cached is not None:
+        return PaginatedJobPostings.model_validate(cached)
+
     items, total = JobPostingService(db).list_open_postings(limit=limit, offset=offset)
-    return PaginatedJobPostings(items=items, total=total, limit=limit, offset=offset)
+    result = PaginatedJobPostings(items=items, total=total, limit=limit, offset=offset)
+
+    set_json(cache_key, json.loads(result.model_dump_json()))
+    return result
 
 
 @router.get("/{job_id}", response_model=JobPostingRead)

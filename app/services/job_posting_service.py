@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.embeddings import generate_embedding
 from app.ai.vector_store import query_similar_candidates
+from app.core.cache import bump_list_version
 from app.models.job_posting import JobPosting
 from app.models.user import User, UserRole
 from app.repositories.candidate_profile_repository import CandidateProfileRepository
@@ -42,6 +43,7 @@ class JobPostingService:
         self._repo.create(job)
         self._db.commit()
         self._db.refresh(job)
+        bump_list_version("jobs")
         return job
 
     def list_open_postings(self, limit: int, offset: int) -> tuple[list[JobPosting], int]:
@@ -67,6 +69,7 @@ class JobPostingService:
 
         self._db.commit()
         self._db.refresh(job)
+        bump_list_version("jobs")  # status changes (e.g. draft->open) affect list results
         return job
 
     def delete_job_posting(self, job_id: uuid.UUID, current_user: User) -> None:
@@ -74,6 +77,7 @@ class JobPostingService:
         self._assert_owner_or_admin(job, current_user)
         self._repo.delete(job)
         self._db.commit()
+        bump_list_version("jobs")
 
     @staticmethod
     def _assert_owner_or_admin(job: JobPosting, current_user: User) -> None:
