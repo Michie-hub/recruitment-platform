@@ -5,25 +5,26 @@ Kept deliberately thin: parse request -> call service -> shape response.
 No business logic here — that all lives in UserService / AuthService.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.api.v1.dependencies.auth import get_current_user
+from app.api.v1.dependencies.rbac import require_role
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models.user import User, UserRole
 from app.schemas.auth import Token
 from app.schemas.user import UserCreate, UserRead
 from app.services.auth_service import AuthService, InvalidCredentialsError
 from app.services.user_service import EmailAlreadyRegisteredError, UserService
-from app.api.v1.dependencies.rbac import require_role
-
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+@limiter.limit("10/minute")
+def register(request: Request, payload: UserCreate, db: Session = Depends(get_db)) -> User:
     """Register a new user account."""
     try:
         return UserService(db).register_user(payload)
@@ -32,12 +33,19 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("5/minute")
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ) -> Token:
     """
     Log in and receive a JWT access token.
+
+    Rate limited to 5 attempts/minute per IP — this is the brute-force
+    protection flagged as a known gap back in Milestone 2. It's a second,
+    independent layer on top of argon2id's already-slow hashing: even fast
+    guesses get capped in volume here.
 
     Uses OAuth2PasswordRequestForm (form-encoded username/password) rather
     than a JSON body — this is the OAuth2 "password" flow shape that
@@ -61,6 +69,7 @@ def read_current_user(current_user: User = Depends(get_current_user)) -> User:
     """Return the currently authenticated user. Proves the whole auth chain works end to end."""
     return current_user
 
+
 @router.get("/admin-only-test", response_model=UserRead)
 def admin_only_test(
     current_user: User = Depends(require_role(UserRole.ADMIN)),
@@ -69,4 +78,4 @@ def admin_only_test(
     TEMPORARY test route proving RBAC works. Delete this once real admin-only
     endpoints (e.g. job posting management) exist in Milestone 3.
     """
-    return current_user    
+    return current_user
