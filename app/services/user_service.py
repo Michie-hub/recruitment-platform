@@ -8,6 +8,7 @@ from app.core.security import hash_password
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserCreate
+from app.models.user import UserRole
 
 
 class EmailAlreadyRegisteredError(Exception):
@@ -33,11 +34,11 @@ class UserService:
             raise EmailAlreadyRegisteredError(f"Email already registered: {payload.email}")
 
         user = User(
-            email=payload.email,
-            hashed_password=hash_password(payload.password),
-            full_name=payload.full_name,
-            role=payload.role,
-        )
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        full_name=payload.full_name,
+        role=UserRole.CANDIDATE,  # always — never derived from client input
+)
         self._repo.create(user)
         self._db.commit()
         self._db.refresh(user)
