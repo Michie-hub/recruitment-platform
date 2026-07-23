@@ -10,6 +10,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.candidates import router as candidates_router
 from app.api.v1.routes.jobs import router as jobs_router
@@ -28,7 +29,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="AI-powered recruitment platform API",
     )
-
+    
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
@@ -36,7 +37,9 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(jobs_router)
     app.include_router(candidates_router)
-
+    
+    app.add_middleware(SecurityHeadersMiddleware)
+    
     @app.get("/health", tags=["system"])
     def health_check() -> dict[str, str]:
         """Liveness/readiness probe used by Docker healthchecks and load balancers."""
