@@ -17,6 +17,7 @@ from app.api.v1.routes.jobs import router as jobs_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.rate_limit import limiter
+from app.core.exceptions import register_exception_handlers
 
 configure_logging()
 logger = get_logger(__name__)
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(candidates_router)
     
     app.add_middleware(SecurityHeadersMiddleware)
+    register_exception_handlers(app)
     
     @app.get("/health", tags=["system"])
     def health_check() -> dict[str, str]:
