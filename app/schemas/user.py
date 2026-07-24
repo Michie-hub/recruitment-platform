@@ -15,15 +15,22 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models.user import UserRole
 
 
+
+
+
 class UserCreate(BaseModel):
-    """Payload for creating a new user. Plaintext password only ever lives here, briefly."""
+    """Payload for creating a new user. Plaintext password only ever lives here, briefly.
+
+    Role is intentionally NOT settable here — self-registration always
+    creates a CANDIDATE. Recruiter/admin accounts are provisioned through
+    a separate, privileged flow, never via open registration input.
+    """
 
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=1, max_length=255)
-    role: UserRole = UserRole.CANDIDATE
-
-
+    # role field removed — see docstring
+    
 class UserRead(BaseModel):
     """Safe user representation returned by the API. No password field, ever."""
 
