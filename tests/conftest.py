@@ -68,10 +68,20 @@ def db_session() -> Generator[Session, None, None]:
     Per-test database session, wrapped in a transaction that's rolled back
     at teardown. Use this fixture directly in repository/service tests
     that need a real Session object (not going through the HTTP layer).
+
+    join_transaction_mode="create_savepoint" matters as soon as we test
+    SERVICE-layer code, not just repositories: services are the layer
+    that's allowed to call db.commit() (see UserService.register_user).
+    Without this setting, that commit() would commit the REAL outer
+    transaction started below, and there'd be nothing left to roll back
+    at teardown — test data would leak into subsequent tests. With this
+    mode, session.commit() only commits a SAVEPOINT; the outer
+    transaction.rollback() below still discards everything, including
+    any "committed" savepoints, once the test finishes.
     """
     connection = test_engine.connect()
     transaction = connection.begin()
-    session = TestSessionLocal(bind=connection)
+    session = TestSessionLocal(bind=connection, join_transaction_mode="create_savepoint")
 
     try:
         yield session
