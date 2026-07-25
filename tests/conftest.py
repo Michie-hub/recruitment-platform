@@ -55,7 +55,7 @@ def _create_test_schema() -> Generator[None, None, None]:
 
     Requires the 'recruitment_test' database to already exist on your
     Postgres server — see README/setup notes for the one-time
-    CREATE DATABASE recruitment_test command.
+    `CREATE DATABASE recruitment_test;` command.
     """
     Base.metadata.create_all(bind=test_engine)
     yield
@@ -77,7 +77,16 @@ def db_session() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
-        transaction.rollback()
+        # A test that triggers an IntegrityError (e.g. a unique/FK
+        # constraint violation) leaves Postgres in an already-aborted
+        # transaction state — SQLAlchemy mirrors that by marking the
+        # transaction inactive. Calling rollback() again in that case
+        # is a harmless no-op but raises SAWarning: "transaction already
+        # deassociated from connection". Checking .is_active first avoids
+        # the redundant call and the warning, without changing behavior
+        # for the normal (non-error) teardown path.
+        if transaction.is_active:
+            transaction.rollback()
         connection.close()
 
 
