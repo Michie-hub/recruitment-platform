@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
 from app.core.config import settings
 
@@ -26,13 +26,13 @@ def hash_password(plain_password: str) -> str:
     return _hasher.hash(plain_password)
 
 
+   
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plaintext password against a stored hash. Returns False on any mismatch."""
+    """Verify a plaintext password against a stored hash. Returns False on any mismatch or malformed hash."""
     try:
         return _hasher.verify(hashed_password, plain_password)
-    except VerifyMismatchError:
+    except (VerifyMismatchError, InvalidHashError):
         return False
-
 
 def create_access_token(user_id: uuid.UUID) -> str:
     """
