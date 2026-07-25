@@ -109,12 +109,27 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     directly are looking at the same isolated transaction — so a test can
     do both (e.g. POST via the client, then assert directly against
     db_session) without them being out of sync.
+
+    Rate limiting is disabled for the duration of the client fixture.
+    slowapi's Limiter is Redis-backed, not tied to the Postgres
+    transaction rollback the rest of this file uses for isolation — so
+    without this, repeated login/register calls across many integration
+    tests could trip the real 5/min or 10/min limits and cause flaky,
+    order-dependent failures that have nothing to do with the test
+    logic itself. Rate limiting's own correctness is already verified
+    separately (manual curl testing during the Milestone 4 hardening
+    pass) — integration tests don't need to re-prove it.
     """
+    from app.core.rate_limit import limiter
 
     def _override_get_db() -> Generator[Session, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+    limiter.enabled = False
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        limiter.enabled = True
+        app.dependency_overrides.clear()

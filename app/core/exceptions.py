@@ -130,6 +130,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         # aborts) that isn't one of our AppError subclasses, and normalizes
         # it to the same {"error": {...}} shape instead of Starlette's
         # default {"detail": "..."}.
+        #
+        # headers=exc.headers matters: FastAPI's own default handler
+        # preserves any custom headers attached to an HTTPException (e.g.
+        # the login route's headers={"WWW-Authenticate": "Bearer"} on a
+        # 401). Building a JSONResponse from scratch without passing
+        # exc.headers through silently drops them — caught by an
+        # integration test asserting on the actual response headers,
+        # which no unit or service-layer test could have seen, since
+        # this only exists once the exception crosses the route boundary.
         logger.info(
             "http_exception | path=%s | status=%s | detail=%s",
             request.url.path,
@@ -139,6 +148,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_body("http_error", str(exc.detail)),
+            headers=exc.headers,
         )
 
     @app.exception_handler(SQLAlchemyError)
