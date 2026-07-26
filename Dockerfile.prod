@@ -1,0 +1,93 @@
+# syntax=docker/dockerfile:1
+
+# ---- Stage 1: builder ----
+# Build tools (gcc, build-essential, libpq-dev) only exist in THIS stage.
+# Some dependencies (e.g. sentence-transformers' transitive deps) may still
+# need to compile despite psycopg[binary] itself shipping a precompiled
+# wheel — installing into a throwaway venv here means none of that
+# compiler tooling ends up in the final image, shrinking it and removing
+# attack surface that's never used at runtime anyway.
+FROM python:3.13-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /code
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install into a venv (not system site-packages) so the whole venv
+# directory can be copied wholesale into the runtime stage below.
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+# ---- Stage 2: runtime ----
+# Starts fresh from the same slim base — none of the builder stage's
+# apt packages or build cache carry over, only the /opt/venv we
+# explicitly copy below.
+FROM python:3.13-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /code
+
+# psycopg[binary] still needs libpq's shared runtime library present
+# (libpq5) even though it doesn't need libpq-dev/headers to compile
+# against — this is the runtime-only counterpart to the builder stage's
+# libpq-dev.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+
+COPY ./app ./app
+COPY alembic.ini .
+COPY ./alembic ./alembic
+
+# Never run as root in production. A container compromise (dependency
+# CVE, request-smuggling bug, whatever) that lands as root can do far
+# more damage — including potentially escaping to the host in some
+# misconfigurations — than one confined to an unprivileged user.
+RUN groupadd --system app && useradd --system --gid app --no-create-home app \
+    && chown -R app:app /code
+USER app
+
+EXPOSE 8000
+
+# curl is used here specifically for this healthcheck; the app's own
+# /health route already exists, this just gives Docker/orchestrators
+# (ECS, Compose, Kubernetes) a way to ask "is this container actually
+# serving traffic" without needing your own probe tooling.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# No --reload (dev-only convenience with a real perf/stability cost in
+# prod), and --workers gives real concurrency across CPU cores instead
+# of a single uvicorn process. 4 is a reasonable starting point — tune
+# based on actual CPU allocation on whatever you deploy to.
+#
+# --proxy-headers is NOT optional once nginx sits in front of this:
+# without it, uvicorn ignores X-Forwarded-For entirely and every
+# request's request.client.host is nginx's own IP, not the real
+# client's — silently collapsing slowapi's per-IP rate limiting into a
+# single shared bucket for all users combined. --forwarded-allow-ips
+# restricts which upstream IPs are trusted to set that header at all;
+# '*' is used here because the nginx container's IP is dynamic on the
+# Docker bridge network, but this means ANY proxy in the chain is
+# trusted — fine when nginx is the only thing in front of this
+# container, worth tightening if that ever changes.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--workers", "4", "--proxy-headers", "--forwarded-allow-ips=*"]

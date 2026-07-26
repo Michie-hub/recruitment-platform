@@ -1,0 +1,39 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+*.egg-info/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Local env / secrets — NEVER let these into a build context or image layer
+.env
+.env.test
+.env.*.local
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs and non-runtime files
+README.md
+DEPLOYMENT.md
+*.md
+
+# Local dev docker files (prod build shouldn't need these)
+docker-compose.yml
+docker-compose.override.yml
